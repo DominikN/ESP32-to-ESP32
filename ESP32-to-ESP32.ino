@@ -8,8 +8,8 @@ using namespace ace_button;
 
 #define DEV_TYPE 0    // type "0" for 1st ESP32, and "1" for 2nd ESP32
 
-const int BUTTON_PIN = 0;
-const int LED_PIN = 23;
+const int BUTTON_PIN = 22;
+const int LED_PIN = 16;
 
 // Husarnet credentials
 const char* hostName0 = "esp2esp0";  //this will be the name of the 1st ESP32 device at https://app.husarnet.com
@@ -178,10 +178,8 @@ void taskConnection( void * parameter ) {
         oldState = btn.getLastButtonState();
         if (oldState == 0) {
           client.print('a');
-          digitalWrite(LED_PIN, HIGH);
         } else {
           client.print('b');
-          digitalWrite(LED_PIN, LOW);
         }
       }
 
