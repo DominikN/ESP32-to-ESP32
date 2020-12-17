@@ -18,7 +18,7 @@ Edit: This project was reorganized for Platfromio. So just clone this repo, and 
 ~~* open ```Tools -> Board```~~
 ~~* select ***ESP32 Dev Module*** under "ESP32 Arduino (Husarnet)" section~~
 
-~~**3. Run demo:**
+~~**3. Run demo:**~~
 ~~* Open **ESP32_ledstrip_webserver.ino** project~~
 ~~* modify line 25 with your Husarnet join code (get on https://app.husarnet.com)~~
 ~~* modify lines 28 - 38 to add your Wi-Fi network credentials~~
