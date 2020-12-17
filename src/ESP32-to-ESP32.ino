@@ -3,23 +3,30 @@
 #include <Husarnet.h>
 #include <AceButton.h>
 
+#include <SPI.h>
+#include <TFT_eSPI.h>
+
 using namespace ace_button;
 
 /* =============== config section start =============== */
 
-#define DEV_TYPE 0 // type "0" for 1st ESP32, and "1" for 2nd ESP32
+#define DEV_TYPE 1 // type "0" for 1st ESP32, and "1" for 2nd ESP32
 
-const int BUTTON_PIN = 22;
-const int LED_PIN = 16;
+const int BUTTON_PIN = 35;
+const int LED_PIN = 17;
+const int PORT = 8001;
+
+#if DEV_TYPE == 0
+const char *myHostName = "esp-a";
+const char *peerHostName = "esp-b";
+#else
+const char *myHostName = "esp-b";
+const char *peerHostName = "esp-a";
+#endif
 
 #if __has_include("credentials.h")
 #include "credentials.h"
 #else
-
-// Husarnet credentials
-const char *hostName0 = "esp2esp0"; //this will be the name of the 1st ESP32 device at https://app.husarnet.com
-const char *hostName1 = "esp2esp1"; //this will be the name of the 2nd ESP32 device at https://app.husarnet.com
-
 /* to get your join code go to https://app.husarnet.com
    -> select network
    -> click "Add element"
@@ -52,21 +59,29 @@ AceButton btn(BUTTON_PIN);
 // you can provide credentials to multiple WiFi networks
 WiFiMulti wifiMulti;
 
-HusarnetClient client;
-
-uint16_t port = 8001;
-
-#if DEV_TYPE == 0
-HusarnetServer server(port);
-#endif
+HusarnetServer server(PORT);
+HusarnetClient clientTx;
+HusarnetClient clientRx;
 
 void handleEvent(AceButton *, uint8_t, uint8_t);
 void taskWifi(void *parameter);
 void taskConnection(void *parameter);
 
+TFT_eSPI tft = TFT_eSPI(); // Invoke custom library
+
 void setup()
 {
   Serial.begin(115200);
+
+  tft.init();
+  tft.setRotation(0);
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_WHITE,TFT_BLACK);  
+  tft.setTextSize(2);
+  Serial.begin(115200);
+  tft.printf("Hostname:\r\n>%s", myHostName);
+
+  //--------------------
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   btn.setEventHandler(handleEvent);
@@ -81,14 +96,6 @@ void setup()
       NULL,       /* Parameter passed as input of the task */
       1,          /* Priority of the task. */
       NULL);      /* Task handle. */
-
-  xTaskCreate(
-      taskConnection,   /* Task function. */
-      "taskConnection", /* String with name of task. */
-      10000,            /* Stack size in bytes. */
-      NULL,             /* Parameter passed as input of the task */
-      1,                /* Priority of the task. */
-      NULL);            /* Task handle. */
 }
 
 void loop()
@@ -138,118 +145,67 @@ void taskWifi(void *parameter)
 
   /* Start Husarnet */
   Husarnet.selfHostedSetup(dashboardURL);
-
-#if DEV_TYPE == 0
-  Husarnet.join(husarnetJoinCode, hostName0);
-#elif DEV_TYPE == 1
-  Husarnet.join(husarnetJoinCode, hostName1);
-#endif
-
+  Husarnet.join(husarnetJoinCode, myHostName);
   Husarnet.start();
 
+  uint8_t oldState = btn.getLastButtonState();
   while (1)
   {
     while (WiFi.status() == WL_CONNECTED)
     {
+      server.begin();
+      if (clientTx.connected() == false)
+      {
+        clientTx = server.available();
+      }
+
+      if (clientRx.connected() == false)
+      {
+        clientRx.connect(peerHostName, PORT);
+      }
+
+      if ((clientRx.connected() == true) && (clientTx.connected() == true))
+      {
+        if (oldState != btn.getLastButtonState())
+        {
+          char txch;
+          oldState = btn.getLastButtonState();
+          if (oldState == 0)
+          {
+            txch = 'a';
+          }
+          else
+          {
+            txch = 'b';
+          }
+          clientTx.print('a');
+          Serial.printf("clientTx: write: %c\r\n", txch);
+          tft.printf("clientTx: write: %c\r\n", txch);
+        }
+
+        if (clientRx.available())
+        {
+          char c = clientRx.read();
+
+          if (c == 'a')
+          {
+            digitalWrite(LED_PIN, HIGH);
+          }
+          if (c == 'b')
+          {
+            digitalWrite(LED_PIN, LOW);
+          }
+
+          Serial.printf("clientRx: read: %c\r\n", c);
+          tft.printf("clientRx: read: %c\r\n", c);
+        }
+      }
+
       delay(5);
     }
     Serial.printf("WiFi disconnected, reconnecting\r\n");
     delay(500);
     stat = wifiMulti.run();
     Serial.printf("WiFi status: %d\r\n", (int)stat);
-  }
-}
-
-void taskConnection(void *parameter)
-{
-  uint8_t oldState = btn.getLastButtonState();
-
-  while (1)
-  {
-    while (WiFi.status() != WL_CONNECTED)
-    {
-      delay(500);
-    }
-
-#if DEV_TYPE == 0
-
-    server.begin();
-    Serial.println("Waiting for client");
-
-    do
-    {
-      delay(500);
-      client = server.available();
-      client.setTimeout(3);
-    } while (client < 1);
-
-#elif DEV_TYPE == 1
-
-    Serial.printf("Connecting to %s\r\n", hostName0);
-    while (client.connect(hostName0, port) == 0)
-    {
-      delay(500);
-    }
-
-#endif
-
-    Serial.printf("Client connected: %d\r\n", (int)client.connected());
-
-    unsigned long lastMsg = millis();
-    auto lastPing = 0;
-
-    while (client.connected())
-    {
-      //ping RX
-      if (millis() - lastMsg > 6000)
-      {
-        Serial.println("ping timeout");
-        break;
-      }
-
-      //ping TX
-      auto now = millis();
-      if (now > lastPing + 4000)
-      {
-        client.print('p');
-        lastPing = now;
-      }
-
-      if (oldState != btn.getLastButtonState())
-      {
-        oldState = btn.getLastButtonState();
-        if (oldState == 0)
-        {
-          client.print('a');
-        }
-        else
-        {
-          client.print('b');
-        }
-      }
-
-      if (client.available())
-      {
-        char c = client.read();
-
-        if (c == 'p')
-        {
-          lastMsg = millis();
-        }
-        if (c == 'a')
-        {
-          digitalWrite(LED_PIN, HIGH);
-        }
-        if (c == 'b')
-        {
-          digitalWrite(LED_PIN, LOW);
-        }
-
-        Serial.printf("read: %c\r\n", c);
-      }
-    }
-    client.stop();
-    Serial.println("Client disconnected.");
-    Serial.println("");
   }
 }
