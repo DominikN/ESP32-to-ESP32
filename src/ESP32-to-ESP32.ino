@@ -10,7 +10,7 @@ using namespace ace_button;
 
 /* =============== config section start =============== */
 
-#define DEV_TYPE 1 // type "0" for 1st ESP32, and "1" for 2nd ESP32
+#define DEV_TYPE 0 // type "0" for 1st ESP32, and "1" for 2nd ESP32
 
 const int BUTTON_PIN = 35;
 const int LED_PIN = 17;
@@ -76,7 +76,7 @@ void setup()
   tft.init();
   tft.setRotation(0);
   tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_WHITE,TFT_BLACK);  
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setTextSize(2);
   Serial.begin(115200);
   tft.printf("Hostname:\r\n>%s", myHostName);
@@ -149,59 +149,90 @@ void taskWifi(void *parameter)
   Husarnet.start();
 
   uint8_t oldState = btn.getLastButtonState();
+
+  unsigned long lastMsg;
+  auto lastPing = 0;
   while (1)
   {
     while (WiFi.status() == WL_CONNECTED)
     {
       server.begin();
-      if (clientTx.connected() == false)
+      while (1)
       {
-        clientTx = server.available();
-      }
-
-      if (clientRx.connected() == false)
-      {
-        clientRx.connect(peerHostName, PORT);
-      }
-
-      if ((clientRx.connected() == true) && (clientTx.connected() == true))
-      {
-        if (oldState != btn.getLastButtonState())
+        if (clientTx.connected() == false)
         {
-          char txch;
-          oldState = btn.getLastButtonState();
-          if (oldState == 0)
-          {
-            txch = 'a';
+          if(clientTx = server.available()) {
+            tft.printf("connected\r\n");
           }
-          else
+          lastPing = millis();
+        }
+        else
+        {
+          if (oldState != btn.getLastButtonState())
           {
-            txch = 'b';
+            char txch;
+            oldState = btn.getLastButtonState();
+            if (oldState == 0)
+            {
+              txch = 'a';
+            }
+            else
+            {
+              txch = 'b';
+            }
+            clientTx.print(txch);
+            lastPing = millis();
+
+            Serial.printf("clientTx: write: %c\r\n", txch);
+            tft.printf(">> %c\r\n", txch);
           }
-          clientTx.print('a');
-          Serial.printf("clientTx: write: %c\r\n", txch);
-          tft.printf("clientTx: write: %c\r\n", txch);
+          auto now = millis();
+          if (now > lastPing + 4000)
+          {
+            clientTx.print('p');
+            lastPing = now;
+          }
         }
 
-        if (clientRx.available())
+        if (clientRx.connected() == false)
         {
-          char c = clientRx.read();
-
-          if (c == 'a')
-          {
-            digitalWrite(LED_PIN, HIGH);
-          }
-          if (c == 'b')
-          {
-            digitalWrite(LED_PIN, LOW);
-          }
-
-          Serial.printf("clientRx: read: %c\r\n", c);
-          tft.printf("clientRx: read: %c\r\n", c);
+          clientRx.connect(peerHostName, PORT);
+          lastMsg = millis();
         }
-      }
+        else
+        {
+          if (millis() - lastMsg > 5000)
+          {
+            Serial.println("ping timeout");
+            break;
+          }
 
-      delay(5);
+          if (clientRx.available())
+          {
+            char c = clientRx.read();
+            lastMsg = millis();
+
+            if (c == 'a')
+            {
+              digitalWrite(LED_PIN, HIGH);
+            }
+            if (c == 'b')
+            {
+              digitalWrite(LED_PIN, LOW);
+            }
+
+            Serial.printf("clientRx: read: %c\r\n", c);
+            tft.printf("<< %c\r\n", c);
+          }
+        }
+
+        delay(5);
+      }
+      clientTx.stop();
+      clientRx.stop();
+      Serial.println("Client disconnected.");
+      Serial.println("");
+      tft.printf("disconnected\r\n");
     }
     Serial.printf("WiFi disconnected, reconnecting\r\n");
     delay(500);
