@@ -10,18 +10,20 @@ using namespace ace_button;
 
 /* =============== config section start =============== */
 
-#define DEV_TYPE 0 // type "0" for 1st ESP32, and "1" for 2nd ESP32
+#define DEV_TYPE 1 // type "0" for 1st ESP32, and "1" for 2nd ESP32
+
+#define ENABLE_TFT 1  //tested on TTGO T Display
 
 const int BUTTON_PIN = 35;
 const int LED_PIN = 17;
 const int PORT = 8001;
 
 #if DEV_TYPE == 0
-const char *myHostName = "esp-a";
-const char *peerHostName = "esp-b";
+const char *myHostName = "esp1";
+const char *peerHostName = "esp2";
 #else
-const char *myHostName = "esp-b";
-const char *peerHostName = "esp-a";
+const char *myHostName = "esp2";
+const char *peerHostName = "esp1";
 #endif
 
 #if __has_include("credentials.h")
@@ -54,6 +56,27 @@ const char *passwordTab[NUM_NETWORKS] = {
 
 /* =============== config section end =============== */
 
+#if ENABLE_TFT == 1
+TFT_eSPI tft = TFT_eSPI(); // Invoke custom library
+#define LOG(f_, ...)                      \
+  {                                       \
+    if (tft.getCursorY() >= tft.height()) \
+    {                                     \
+      tft.fillScreen(TFT_BLACK);          \
+      tft.setCursor(0, 0);                \
+      tft.printf("IP: %u.%u.%u.%u\r\n", myip[0], myip[1], myip[2], myip[3]); \
+      tft.printf("Hostname: %s\r\n--\r\n", Husarnet.getHostname()); \
+    }                                     \
+    tft.printf((f_), ##__VA_ARGS__);      \
+    Serial.printf((f_), ##__VA_ARGS__);   \
+  }
+#else
+#define LOG(f_, ...)                      \
+  {                                       \
+    Serial.printf((f_), ##__VA_ARGS__);   \
+  }
+#endif
+
 AceButton btn(BUTTON_PIN);
 
 // you can provide credentials to multiple WiFi networks
@@ -63,24 +86,23 @@ HusarnetServer server(PORT);
 HusarnetClient clientTx;
 HusarnetClient clientRx;
 
+IPAddress myip;
+
 void handleEvent(AceButton *, uint8_t, uint8_t);
 void taskWifi(void *parameter);
 void taskConnection(void *parameter);
-
-TFT_eSPI tft = TFT_eSPI(); // Invoke custom library
 
 void setup()
 {
   Serial.begin(115200);
 
+#if ENABLE_TFT == 1
   tft.init();
   tft.setRotation(0);
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setTextSize(2);
-  Serial.begin(115200);
-  tft.printf("Hostname:\r\n>%s", myHostName);
-
+  tft.setTextSize(1);
+#endif
   //--------------------
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
@@ -141,12 +163,15 @@ void taskWifi(void *parameter)
 
   Serial.printf("WiFi connected\r\n", (int)stat);
   Serial.printf("IP address: ");
-  Serial.println(WiFi.localIP());
+
+  myip = WiFi.localIP();
+  LOG("IP: %u.%u.%u.%u\r\n", myip[0], myip[1], myip[2], myip[3]);
 
   /* Start Husarnet */
   Husarnet.selfHostedSetup(dashboardURL);
   Husarnet.join(husarnetJoinCode, myHostName);
   Husarnet.start();
+  LOG("Hostname: %s\r\n--\r\n", myHostName);
 
   uint8_t oldState = btn.getLastButtonState();
 
@@ -156,14 +181,13 @@ void taskWifi(void *parameter)
   {
     while (WiFi.status() == WL_CONNECTED)
     {
+      myip = WiFi.localIP();
       server.begin();
       while (1)
       {
         if (clientTx.connected() == false)
         {
-          if(clientTx = server.available()) {
-            tft.printf("connected\r\n");
-          }
+          clientTx = server.available();
           lastPing = millis();
         }
         else
@@ -183,8 +207,7 @@ void taskWifi(void *parameter)
             clientTx.print(txch);
             lastPing = millis();
 
-            Serial.printf("clientTx: write: %c\r\n", txch);
-            tft.printf(">> %c\r\n", txch);
+            LOG(">%c ", txch);
           }
           auto now = millis();
           if (now > lastPing + 4000)
@@ -196,14 +219,22 @@ void taskWifi(void *parameter)
 
         if (clientRx.connected() == false)
         {
+          unsigned long connTime = millis();
           clientRx.connect(peerHostName, PORT);
+          connTime = millis() - connTime;
+          if (clientRx.connected())
+          {
+            LOG("connecting to %s...", peerHostName);
+            LOG("done [%d s]\r\n", connTime / 1000);
+          }
+
           lastMsg = millis();
         }
         else
         {
           if (millis() - lastMsg > 5000)
           {
-            Serial.println("ping timeout");
+            LOG("ping timeout\r\n");
             break;
           }
 
@@ -221,8 +252,7 @@ void taskWifi(void *parameter)
               digitalWrite(LED_PIN, LOW);
             }
 
-            Serial.printf("clientRx: read: %c\r\n", c);
-            tft.printf("<< %c\r\n", c);
+            LOG("<%c ", c);
           }
         }
 
@@ -230,13 +260,11 @@ void taskWifi(void *parameter)
       }
       clientTx.stop();
       clientRx.stop();
-      Serial.println("Client disconnected.");
-      Serial.println("");
-      tft.printf("disconnected\r\n");
+      LOG("disconnected\r\n");
     }
-    Serial.printf("WiFi disconnected, reconnecting\r\n");
+    LOG("WiFi disconnected, reconnecting\r\n");
     delay(500);
     stat = wifiMulti.run();
-    Serial.printf("WiFi status: %d\r\n", (int)stat);
+    LOG("WiFi status: %d\r\n", (int)stat);
   }
 }
