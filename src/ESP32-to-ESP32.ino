@@ -143,16 +143,20 @@ void handleEvent(AceButton *button, uint8_t eventType, uint8_t buttonState) {
       addr2.data[i] = addr[i];
     }
 
-    if (!httpClient.connect(addr2, PORT)) {
-      Serial.println("connection failed");
+    if(host.second == "master") {
+      ;
     } else {
-      String requestURL = "/led/1/state/" + String(ledState);
-      Serial.printf("\r\n=========================================\r\n");
-      Serial.println(requestURL);
+      if (!httpClient.connect(addr2, PORT)) {
+        Serial.println("connection failed");
+      } else {
+        String requestURL = "/led/1/state/" + String(ledState);
+        Serial.printf("\r\n=========================================\r\n");
+        Serial.println(requestURL);
 
-      httpClient.print(String("GET ") + requestURL + + " HTTP/1.1\r\n" + "Host: esp32\r\n" + "Connection: close\r\n\r\n");
+        httpClient.print(String("GET ") + requestURL + + " HTTP/1.1\r\n" + "Host: esp32\r\n" + "Connection: close\r\n\r\n");
       
-      LOG("%s:\r\n%s\r\n\r\n", host.second.c_str(), host.first.toString().c_str());
+        LOG("%s:\r\n%s\r\n\r\n", host.second.c_str(), host.first.toString().c_str());
+      }
     }
   }
 }
