@@ -2,6 +2,10 @@
 #include <Husarnet.h>
 #include <SPI.h>
 #include <TFT_eSPI.h>
+
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+
 #include <WiFi.h>
 #include <WiFiMulti.h>
 
@@ -9,21 +13,11 @@ using namespace ace_button;
 
 /* =============== config section start =============== */
 
-#define DEV_TYPE 0  // type "0" for 1st ESP32, and "1" for 2nd ESP32
-
 #define ENABLE_TFT 1  // tested on TTGO T Display
 
-const int BUTTON_PIN = 35;
-const int LED_PIN = 17;
+const int BUTTON_PIN = 0;
+const int LED_PIN = 27;
 const int PORT = 8001;
-
-#if DEV_TYPE == 0
-const char *myHostName = "esp1";
-const char *peerHostName = "esp2";
-#else
-const char *myHostName = "esp2";
-const char *peerHostName = "esp1";
-#endif
 
 #if __has_include("credentials.h")
 #include "credentials.h"
@@ -50,6 +44,8 @@ const char *passwordTab[NUM_NETWORKS] = {
     "wifi-pass-one",
     "wifi-pass-two",
 };
+
+const char *hostname = "random";
 
 #endif
 
@@ -78,9 +74,14 @@ AceButton btn(BUTTON_PIN);
 // you can provide credentials to multiple WiFi networks
 WiFiMulti wifiMulti;
 
-HusarnetServer server(PORT);
-HusarnetClient clientTx;
-HusarnetClient clientRx;
+/* store index.html content in html constant variable (platformio feature) */
+extern const char index_html_start[] asm("_binary_src_index_html_start");
+const String html = String((const char*)index_html_start);
+AsyncWebServer server(PORT);
+
+HusarnetClient httpClient;
+
+// asyncHTTPrequest httpClient;
 
 IPAddress myip;
 
@@ -122,15 +123,37 @@ void loop() {
 }
 
 void handleEvent(AceButton *button, uint8_t eventType, uint8_t buttonState) {
+  int ledState = 0;
   switch (eventType) {
     case AceButton::kEventPressed:
       Serial.println("pressed");
+      ledState = 1;
       break;
     case AceButton::kEventReleased:
       Serial.println("released");
+      ledState = 0;
       break;
   }
+
+  for (auto const &host : Husarnet.listPeers()) {
+    IPv6Address addr = host.first;
+    IP6Address addr2; //based on std:array
+
+    for(int i=0; i<16; i++) {
+      addr2.data[i] = addr[i];
+    }
+
+    if (!httpClient.connect(addr2, PORT)) {
+      Serial.println("connection failed");
+    } else {
+      String requestURL = "/led/1/state/" + String(ledState);
+      Serial.printf("\r\n=========================================\r\n");
+      Serial.println(requestURL);
+      httpClient.print(String("GET ") + requestURL + + " HTTP/1.1\r\n" + "Host: esp32\r\n" + "Connection: close\r\n\r\n");
+    LOG("%s: %s\r\n", host.second.c_str(), host.first.toString().c_str());
+  }
 }
+
 
 void taskWifi(void *parameter) {
   uint8_t stat = WL_DISCONNECTED;
@@ -156,79 +179,32 @@ void taskWifi(void *parameter) {
 
   /* Start Husarnet */
   Husarnet.selfHostedSetup(dashboardURL);
-  Husarnet.join(husarnetJoinCode, myHostName);
+  Husarnet.join(husarnetJoinCode, hostname);
   Husarnet.start();
-  LOG("Hostname: %s\r\n--\r\n", myHostName);
+  LOG("Hostname: %s\r\n--\r\n", hostname);
+
+    /* Start a web server */
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
+    request->send(200, "text/html", html);
+  });
+
+  // Send a GET request to <IP>/led/<number>/state/<0 or 1>
+  server.on("^\\/led\\/([0-9]+)\\/state\\/([0-9]+)$", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    String ledNumber = request->pathArg(0); // currently unused - we use only a predefined LED number
+    String state = request->pathArg(1);
+
+    digitalWrite(LED_PIN, state.toInt());
+
+    request->send(200, "text/plain", "LED: " + ledNumber + ", with state: " + state);
+  });
+
+  server.begin();
 
   uint8_t oldState = btn.getLastButtonState();
 
-  unsigned long lastMsg;
-  auto lastPing = 0;
   while (1) {
     while (WiFi.status() == WL_CONNECTED) {
-      myip = WiFi.localIP();
-      server.begin();
-      while (WiFi.status() == WL_CONNECTED) {
-        if (clientTx.connected() == false) {
-          clientTx = server.available();
-          lastPing = millis();
-        } else {
-          if (oldState != btn.getLastButtonState()) {
-            char txch;
-            oldState = btn.getLastButtonState();
-            if (oldState == 0) {
-              txch = 'a';
-            } else {
-              txch = 'b';
-            }
-            clientTx.print(txch);
-            lastPing = millis();
-
-            LOG(">%c ", txch);
-          }
-          auto now = millis();
-          if (now > lastPing + 4000) {
-            clientTx.print('p');
-            lastPing = now;
-          }
-        }
-
-        if (clientRx.connected() == false) {
-          unsigned long connTime = millis();
-          clientRx.connect(peerHostName, PORT);
-          connTime = millis() - connTime;
-          if (clientRx.connected()) {
-            LOG("connecting to %s...", peerHostName);
-            LOG("done [%d s]\r\n", connTime / 1000);
-          }
-
-          lastMsg = millis();
-        } else {
-          if (millis() - lastMsg > 5000) {
-            LOG("ping timeout\r\n");
-            break;
-          }
-
-          if (clientRx.available()) {
-            char c = clientRx.read();
-            lastMsg = millis();
-
-            if (c == 'a') {
-              digitalWrite(LED_PIN, HIGH);
-            }
-            if (c == 'b') {
-              digitalWrite(LED_PIN, LOW);
-            }
-
-            LOG("<%c ", c);
-          }
-        }
-
-        delay(5);
-      }
-      clientTx.stop();
-      clientRx.stop();
-      LOG("disconnected\r\n");
+      delay(500);
     }
     LOG("WiFi disconnected, reconnecting\r\n");
     delay(500);
