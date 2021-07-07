@@ -39,10 +39,10 @@ const char *passwordTab[NUM_NETWORKS] = {
 > -> `Add element` button  
 > -> `Join Code` tab** 
 
-5. Place you Husarnet Join Code here:
+5. Place your Husarnet Join Code here:
 
 ```cpp
 const char *husarnetJoinCode = "fc94:b01d:1803:8dd8:b293:5c7d:7639:932a/xxxxxxxxxxxxxxxxxxxxxx";
 ```
 
-6. Flash at least two ESP32 devices with and enjoy
+6. Flash at least two ESP32 devices and enjoy
