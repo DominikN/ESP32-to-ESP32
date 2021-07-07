@@ -149,8 +149,11 @@ void handleEvent(AceButton *button, uint8_t eventType, uint8_t buttonState) {
       String requestURL = "/led/1/state/" + String(ledState);
       Serial.printf("\r\n=========================================\r\n");
       Serial.println(requestURL);
+
       httpClient.print(String("GET ") + requestURL + + " HTTP/1.1\r\n" + "Host: esp32\r\n" + "Connection: close\r\n\r\n");
-    LOG("%s: %s\r\n", host.second.c_str(), host.first.toString().c_str());
+      
+      LOG("%s:\r\n%s\r\n\r\n", host.second.c_str(), host.first.toString().c_str());
+    }
   }
 }
 
