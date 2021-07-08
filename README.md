@@ -1,10 +1,10 @@
 # ESP32-to-ESP32
 *ESP32 to ESP32 communication example using Arduino framework. Secure, P2P, low latency connection between devices is established. Button connected to the first ESP32 controlls LED connected to second ESP32.*
 
-- ESP32 acts both as a HTTP server and HTTP client (listening on port 8001)
-- ESP32 automatically detects all peers in the same network
-- when the button is pressed, HTTP request is sent to other peers and turn the LED on
-- when the button is released, HTTP request is sent to other peers and turn on the LED off
+- ESP32 acts both as a HTTP server (based on `ESPAsyncWebServer` library) and HTTP client (based on `AsyncTCP`)
+- ESP32 automatically detects all peers in the same Husarnet VPN network
+- when the button is pressed, HTTP request is sent to all other peers and turn the LED on
+- when the button is released, HTTP request is sent to all other peers and turn on the LED off
 
 ## Default hardware configuration:
 
@@ -14,22 +14,17 @@
 ## Running a project
 
 1. Clone this repo
+
 2. Open the repo folder using VSC with installed Platformio extension
+
 3. Provide your Wi-Fi networks credentials here:
 
 ```cpp
 // WiFi credentials
-#define NUM_NETWORKS 2  // number of Wi-Fi network credentials saved
-
-const char *ssidTab[NUM_NETWORKS] = {
-    "wifi-ssid-one",
-    "wifi-ssid-two",
-};
-
-const char *passwordTab[NUM_NETWORKS] = {
-    "wifi-pass-one",
-    "wifi-pass-two",
-};
+const char* wifiNetworks[][2] = {
+  {"wifi-ssid-one", "wifi-pass-one"},
+  {"wifi-ssid-two", "wifi-pass-two"},
+} 
 ```
 
 4. Get your Husarnet VPN Join Code (allowing you to connect devices to the same VPN network)
