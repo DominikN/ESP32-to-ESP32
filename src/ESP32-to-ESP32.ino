@@ -80,7 +80,6 @@ const String html = String((const char*)index_html_start);
 AsyncWebServer server(PORT);
 
 // TCP client array for HTTP requests to other Peers after button press/release
-AsyncClient* client_tcp = new AsyncClient;
 
 IPAddress myip;
 
@@ -109,27 +108,21 @@ void handleEvent(AceButton *button, uint8_t eventType, uint8_t buttonState) {
       ;
     } else {
       LOG("%s:\r\n%s\r\n\r\n", host.second.c_str(), host.first.toString().c_str());
-
+      AsyncClient* client_tcp = new AsyncClient;
+      
+      client_tcp->onData(&handleData, client_tcp);
+	    client_tcp->onConnect(&onConnect, client_tcp);
+      client_tcp->onError(&handleError, NULL);
+      client_tcp->onTimeout(&handleTimeOut, NULL);
+      client_tcp->onDisconnect(&handleDisconnect, NULL);
+      
       client_tcp->connect(peerAddr, PORT);
-      client_tcp->close();
-      delay(500);
     }
   }
 }
 
 static void onConnect(void *arg, AsyncClient *client)
 {
-	// Serial.printf("\r\nclient has been connected. Sending request: \r\n");
-  // String requestURL = "/led/1/state/" + String(ledState);
-  // String GETreq = String("GET ") + requestURL + + " HTTP/1.1\r\n" + "Host: esp32\r\n" + "Connection: close\r\n\r\n";
-	
-  // if ( client->canSend() && (client->space() > GETreq.length())){
-  //   Serial.println(GETreq);
-	// 	client->add(GETreq.c_str(), strlen(GETreq.c_str()));
-	// 	client->send();
-	// } else {
-  //   Serial.printf("\r\nSENDING ERROR!\r\n");
-  // }
   String requestURL = "/led/1/state/" + String(ledState);
   String GETreq = String("GET ") + requestURL + " HTTP/1.1\r\n" + "Host: esp32\r\n" + "Connection: close\r\n\r\n";
 
@@ -145,6 +138,7 @@ static void handleData(void *arg, AsyncClient *client, void *data, size_t len)
 {
 	Serial.printf("\r\nResponse from %s\r\n", client->remoteIP().toString().c_str());
 	Serial.write((uint8_t *)data, len);
+  client->close();
 }
 
 static void handleError(void* arg, AsyncClient* client, int8_t error) 
@@ -160,16 +154,12 @@ static void handleTimeOut(void* arg, AsyncClient* client, uint32_t time)
 static void handleDisconnect(void* arg, AsyncClient* client) 
 {
     Serial.println("[CALLBACK] discconnected");
+
+    delete client;
 }
 
 void setup() {
   Serial.begin(115200);
-
-  client_tcp->onData(&handleData, client_tcp);
-	client_tcp->onConnect(&onConnect, client_tcp);
-  client_tcp->onError(&handleError, NULL);
-  client_tcp->onTimeout(&handleTimeOut, NULL);
-  client_tcp->onDisconnect(&handleDisconnect, NULL);
 
 #if ENABLE_TFT == 1
   tft.init();
