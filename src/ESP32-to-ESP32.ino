@@ -1,20 +1,37 @@
-#include <AceButton.h>
+#include <WiFi.h>
+#include <WiFiMulti.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
 #include <Husarnet.h>
+#include <AceButton.h>
+
 #include <SPI.h>
 #include <TFT_eSPI.h>
 
-#include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
-
-#include <WiFi.h>
-#include <WiFiMulti.h>
-
-using namespace ace_button;
-
-/* =============== config section start =============== */
-
 #define ENABLE_TFT 1  // tested on TTGO T Display
 
+#if ENABLE_TFT == 1
+
+TFT_eSPI tft = TFT_eSPI(); 
+
+#define LOG(f_, ...)                                                         \
+  {                                                                          \
+    if (tft.getCursorY() >= tft.height() || tft.getCursorY() == 0) {         \
+      tft.fillScreen(TFT_BLACK);                                             \
+      tft.setCursor(0, 0);                                                   \
+      IPAddress myip = WiFi.localIP();                                       \
+      tft.printf("IP: %u.%u.%u.%u\r\n", myip[0], myip[1], myip[2], myip[3]); \
+      tft.printf("Hostname: %s\r\n--\r\n", Husarnet.getHostname());          \
+    }                                                                        \
+    tft.printf((f_), ##__VA_ARGS__);                                         \
+    Serial.printf((f_), ##__VA_ARGS__);                                      \
+  }
+#else
+#define LOG(f_, ...) \
+  { Serial.printf((f_), ##__VA_ARGS__); }
+#endif
+
+/* =============== config section start =============== */
 #if __has_include("credentials.h")
 #include "credentials.h"
 #else
@@ -37,27 +54,9 @@ const char* wifiNetworks[][2] = {
 const char *hostname = "random";
 
 #endif
-
 /* =============== config section end =============== */
 
-#if ENABLE_TFT == 1
-TFT_eSPI tft = TFT_eSPI();  // Invoke custom library
-#define LOG(f_, ...)                                                         \
-  {                                                                          \
-    if (tft.getCursorY() >= tft.height() || tft.getCursorY() == 0) {         \
-      tft.fillScreen(TFT_BLACK);                                             \
-      tft.setCursor(0, 0);                                                   \
-      IPAddress myip = WiFi.localIP();                                       \
-      tft.printf("IP: %u.%u.%u.%u\r\n", myip[0], myip[1], myip[2], myip[3]); \
-      tft.printf("Hostname: %s\r\n--\r\n", Husarnet.getHostname());          \
-    }                                                                        \
-    tft.printf((f_), ##__VA_ARGS__);                                         \
-    Serial.printf((f_), ##__VA_ARGS__);                                      \
-  }
-#else
-#define LOG(f_, ...) \
-  { Serial.printf((f_), ##__VA_ARGS__); }
-#endif
+using namespace ace_button;
 
 const int BUTTON_PIN = 0;
 const int LED_PIN = 27;
@@ -170,7 +169,7 @@ void taskWifi(void *parameter) {
 }
 
 void handleButtonEvent(AceButton *button, uint8_t eventType, uint8_t buttonState) {
-  ledState = buttonState;
+  ledState = (buttonState==1?0:1);
 
   for (auto const &host : Husarnet.listPeers()) {
     IPv6Address peerAddr = host.first;
