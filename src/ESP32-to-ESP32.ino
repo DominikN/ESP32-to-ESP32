@@ -90,7 +90,7 @@ void taskConnection(void *parameter);
 int ledState = 0;
 
 void handleEvent(AceButton *button, uint8_t eventType, uint8_t buttonState) {
-  
+
   switch (eventType) {
     case AceButton::kEventPressed:
       Serial.printf("\r\n===========PRESSED============\r\n");
@@ -108,54 +108,43 @@ void handleEvent(AceButton *button, uint8_t eventType, uint8_t buttonState) {
       ;
     } else {
       LOG("%s:\r\n%s\r\n\r\n", host.second.c_str(), host.first.toString().c_str());
+
       AsyncClient* client_tcp = new AsyncClient;
       
-      client_tcp->onData(&handleData, client_tcp);
-	    client_tcp->onConnect(&onConnect, client_tcp);
-      client_tcp->onError(&handleError, NULL);
-      client_tcp->onTimeout(&handleTimeOut, NULL);
-      client_tcp->onDisconnect(&handleDisconnect, NULL);
+      client_tcp->onConnect([](void *arg, AsyncClient *client) {
+        String requestURL = "/led/1/state/" + String(ledState);
+        String GETreq = String("GET ") + requestURL + " HTTP/1.1\r\n" + "Host: esp32\r\n" + "Connection: close\r\n\r\n";
+
+        if ( client->canSend() && (client->space() > GETreq.length())){
+          client->add(GETreq.c_str(), strlen(GETreq.c_str()));
+	        client->send();
+        } else {
+          Serial.printf("\r\nSENDING ERROR!\r\n");
+        }
+      }, client_tcp);
+
+      client_tcp->onData([](void *arg, AsyncClient *client, void *data, size_t len) {
+        Serial.printf("\r\nResponse from %s\r\n", client->remoteIP().toString().c_str());
+	      Serial.write((uint8_t *)data, len);
+        client->close();
+      }, client_tcp);
+
+      client_tcp->onDisconnect([](void* arg, AsyncClient* client) {
+        Serial.println("[CALLBACK] discconnected");
+        delete client;
+      }, client_tcp);
+      
+      client_tcp->onError([](void* arg, AsyncClient* client, int8_t error) {
+        Serial.printf("[CALLBACK] error: %d\r\n", error);
+      }, NULL);
+
+      client_tcp->onTimeout([](void* arg, AsyncClient* client, uint32_t time) {
+        Serial.println("[CALLBACK] ACK timeout");
+      }, NULL);
       
       client_tcp->connect(peerAddr, PORT);
     }
   }
-}
-
-static void onConnect(void *arg, AsyncClient *client)
-{
-  String requestURL = "/led/1/state/" + String(ledState);
-  String GETreq = String("GET ") + requestURL + " HTTP/1.1\r\n" + "Host: esp32\r\n" + "Connection: close\r\n\r\n";
-
-  if ( client->canSend() && (client->space() > GETreq.length())){
-    client->add(GETreq.c_str(), strlen(GETreq.c_str()));
-	  client->send();
-  } else {
-    Serial.printf("\r\nSENDING ERROR!\r\n");
-  }
-}
-
-static void handleData(void *arg, AsyncClient *client, void *data, size_t len)
-{
-	Serial.printf("\r\nResponse from %s\r\n", client->remoteIP().toString().c_str());
-	Serial.write((uint8_t *)data, len);
-  client->close();
-}
-
-static void handleError(void* arg, AsyncClient* client, int8_t error) 
-{
-    Serial.printf("[CALLBACK] error: %d\r\n", error);
-}
-
-static void handleTimeOut(void* arg, AsyncClient* client, uint32_t time) 
-{
-    Serial.println("[CALLBACK] ACK timeout");
-}
-
-static void handleDisconnect(void* arg, AsyncClient* client) 
-{
-    Serial.println("[CALLBACK] discconnected");
-
-    delete client;
 }
 
 void setup() {
