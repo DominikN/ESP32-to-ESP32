@@ -29,17 +29,10 @@ const char *husarnetJoinCode = "xxxxxxxxxxxxxxxxxxxxxx";
 const char *dashboardURL = "default";
 
 // WiFi credentials
-#define NUM_NETWORKS 2  // number of Wi-Fi network credentials saved
-
-const char *ssidTab[NUM_NETWORKS] = {
-    "wifi-ssid-one",
-    "wifi-ssid-two",
-};
-
-const char *passwordTab[NUM_NETWORKS] = {
-    "wifi-pass-one",
-    "wifi-pass-two",
-};
+const char* wifiNetworks[][2] = {
+  {"wifi-ssid-one", "wifi-pass-one"},
+  {"wifi-ssid-two", "wifi-pass-two"},
+} 
 
 const char *hostname = "random";
 
@@ -51,9 +44,10 @@ const char *hostname = "random";
 TFT_eSPI tft = TFT_eSPI();  // Invoke custom library
 #define LOG(f_, ...)                                                         \
   {                                                                          \
-    if (tft.getCursorY() >= tft.height()) {                                  \
+    if (tft.getCursorY() >= tft.height() || tft.getCursorY() == 0) {         \
       tft.fillScreen(TFT_BLACK);                                             \
       tft.setCursor(0, 0);                                                   \
+      IPAddress myip = WiFi.localIP();                                       \
       tft.printf("IP: %u.%u.%u.%u\r\n", myip[0], myip[1], myip[2], myip[3]); \
       tft.printf("Hostname: %s\r\n--\r\n", Husarnet.getHostname());          \
     }                                                                        \
@@ -99,11 +93,36 @@ void setup() {
   tft.setTextSize(1);
 #endif
 
+  // LED and Button config
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   btn.setEventHandler(handleButtonEvent);
 
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
+
+  // Save Wi-Fi credentials
+  for (int i = 0; i < (sizeof(wifiNetworks)/sizeof(wifiNetworks[0])); i++) {
+    wifiMulti.addAP(wifiNetworks[i][0], wifiNetworks[i][1]);
+    Serial.printf("WiFi %d: SSID: \"%s\" ; PASS: \"%s\"\r\n", i, wifiNetworks[i][0], wifiNetworks[i][1]);
+  }
+
+  // Husarnet VPN configuration 
+  Husarnet.selfHostedSetup(dashboardURL);
+  Husarnet.join(husarnetJoinCode, hostname);
+
+  // A dummy web server (see index.html)
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
+    request->send(200, "text/html", html);
+  });
+
+  // Send a GET request to <IP>/led/<number>/state/<0 or 1>
+  server.on("^\\/led\\/([0-9]+)\\/state\\/([0-9]+)$", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    String ledNumber = request->pathArg(0); // currently unused - we use only a predefined LED number
+    String state = request->pathArg(1);
+
+    digitalWrite(LED_PIN, state.toInt());
+    request->send(200, "text/plain", "LED: " + ledNumber + ", with state: " + state);
+  });
 
   xTaskCreate(taskWifi,   /* Task function. */
               "taskWifi", /* String with name of task. */
@@ -123,12 +142,6 @@ void loop() {
 void taskWifi(void *parameter) {
   uint8_t stat = WL_DISCONNECTED;
 
-  /* Configure Wi-Fi */
-  for (int i = 0; i < NUM_NETWORKS; i++) {
-    wifiMulti.addAP(ssidTab[i], passwordTab[i]);
-    Serial.printf("WiFi %d: SSID: \"%s\" ; PASS: \"%s\"\r\n", i, ssidTab[i], passwordTab[i]);
-  }
-
   while (stat != WL_CONNECTED) {
     stat = wifiMulti.run();
     Serial.printf("WiFi status: %d\r\n", (int)stat);
@@ -136,34 +149,14 @@ void taskWifi(void *parameter) {
   }
 
   Serial.printf("WiFi connected\r\n", (int)stat);
-  Serial.printf("IP address: ");
 
-  myip = WiFi.localIP();
-  LOG("IP: %u.%u.%u.%u\r\n", myip[0], myip[1], myip[2], myip[3]);
-
-  /* Start Husarnet */
-  Husarnet.selfHostedSetup(dashboardURL);
-  Husarnet.join(husarnetJoinCode, hostname);
+  // Start Husarnet VPN Client
   Husarnet.start();
-  LOG("Hostname: %s\r\n--\r\n", hostname);
 
-    /* Start a web server */
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
-    request->send(200, "text/html", html);
-  });
-
-  // Send a GET request to <IP>/led/<number>/state/<0 or 1>
-  server.on("^\\/led\\/([0-9]+)\\/state\\/([0-9]+)$", HTTP_GET, [] (AsyncWebServerRequest *request) {
-    String ledNumber = request->pathArg(0); // currently unused - we use only a predefined LED number
-    String state = request->pathArg(1);
-
-    digitalWrite(LED_PIN, state.toInt());
-    request->send(200, "text/plain", "LED: " + ledNumber + ", with state: " + state);
-  });
-
+  // Start HTTP server
   server.begin();
 
-  uint8_t oldState = btn.getLastButtonState();
+  LOG("READY!\r\n");
 
   while (1) {
     while (WiFi.status() == WL_CONNECTED) {
@@ -184,8 +177,6 @@ void handleButtonEvent(AceButton *button, uint8_t eventType, uint8_t buttonState
     if(host.second == "master") {
       ;
     } else {
-      LOG("%s:\r\n%s\r\n\r\n", host.second.c_str(), host.first.toString().c_str());
-
       AsyncClient* client_tcp = new AsyncClient;
       
       client_tcp->onConnect([](void *arg, AsyncClient *client) {
@@ -220,6 +211,8 @@ void handleButtonEvent(AceButton *button, uint8_t eventType, uint8_t buttonState
       }, NULL);
       
       client_tcp->connect(peerAddr, PORT);
+
+      LOG("Sending HTTP req to:\r\n%s:\r\n%s\r\n\r\n", host.second.c_str(), host.first.toString().c_str());
     }
   }
 }
