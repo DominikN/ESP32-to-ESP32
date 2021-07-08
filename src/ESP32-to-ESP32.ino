@@ -79,9 +79,8 @@ extern const char index_html_start[] asm("_binary_src_index_html_start");
 const String html = String((const char*)index_html_start);
 AsyncWebServer server(PORT);
 
-HusarnetClient httpClient;
-
-// asyncHTTPrequest httpClient;
+// TCP client array for HTTP requests to other Peers after button press/release
+AsyncClient* client_tcp = new AsyncClient;
 
 IPAddress myip;
 
@@ -89,8 +88,88 @@ void handleEvent(AceButton *, uint8_t, uint8_t);
 void taskWifi(void *parameter);
 void taskConnection(void *parameter);
 
+int ledState = 0;
+
+void handleEvent(AceButton *button, uint8_t eventType, uint8_t buttonState) {
+  
+  switch (eventType) {
+    case AceButton::kEventPressed:
+      Serial.printf("\r\n===========PRESSED============\r\n");
+      ledState = 1;
+      break;
+    case AceButton::kEventReleased:
+      Serial.printf("\r\n===========RELEASED===========\r\n");
+      ledState = 0;
+      break;
+  }
+
+  for (auto const &host : Husarnet.listPeers()) {
+    IPv6Address peerAddr = host.first;
+    if(host.second == "master") {
+      ;
+    } else {
+      LOG("%s:\r\n%s\r\n\r\n", host.second.c_str(), host.first.toString().c_str());
+
+      client_tcp->connect(peerAddr, PORT);
+      client_tcp->close();
+      delay(500);
+    }
+  }
+}
+
+static void onConnect(void *arg, AsyncClient *client)
+{
+	// Serial.printf("\r\nclient has been connected. Sending request: \r\n");
+  // String requestURL = "/led/1/state/" + String(ledState);
+  // String GETreq = String("GET ") + requestURL + + " HTTP/1.1\r\n" + "Host: esp32\r\n" + "Connection: close\r\n\r\n";
+	
+  // if ( client->canSend() && (client->space() > GETreq.length())){
+  //   Serial.println(GETreq);
+	// 	client->add(GETreq.c_str(), strlen(GETreq.c_str()));
+	// 	client->send();
+	// } else {
+  //   Serial.printf("\r\nSENDING ERROR!\r\n");
+  // }
+  String requestURL = "/led/1/state/" + String(ledState);
+  String GETreq = String("GET ") + requestURL + " HTTP/1.1\r\n" + "Host: esp32\r\n" + "Connection: close\r\n\r\n";
+
+  if ( client->canSend() && (client->space() > GETreq.length())){
+    client->add(GETreq.c_str(), strlen(GETreq.c_str()));
+	  client->send();
+  } else {
+    Serial.printf("\r\nSENDING ERROR!\r\n");
+  }
+}
+
+static void handleData(void *arg, AsyncClient *client, void *data, size_t len)
+{
+	Serial.printf("\r\nResponse from %s\r\n", client->remoteIP().toString().c_str());
+	Serial.write((uint8_t *)data, len);
+}
+
+static void handleError(void* arg, AsyncClient* client, int8_t error) 
+{
+    Serial.printf("[CALLBACK] error: %d\r\n", error);
+}
+
+static void handleTimeOut(void* arg, AsyncClient* client, uint32_t time) 
+{
+    Serial.println("[CALLBACK] ACK timeout");
+}
+
+static void handleDisconnect(void* arg, AsyncClient* client) 
+{
+    Serial.println("[CALLBACK] discconnected");
+}
+
 void setup() {
   Serial.begin(115200);
+
+  client_tcp->onData(&handleData, client_tcp);
+	client_tcp->onConnect(&onConnect, client_tcp);
+  client_tcp->onError(&handleError, NULL);
+  client_tcp->onTimeout(&handleTimeOut, NULL);
+  client_tcp->onDisconnect(&handleDisconnect, NULL);
 
 #if ENABLE_TFT == 1
   tft.init();
@@ -105,7 +184,7 @@ void setup() {
   btn.setEventHandler(handleEvent);
 
   pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, HIGH);
+  digitalWrite(LED_PIN, LOW);
 
   xTaskCreate(taskWifi,   /* Task function. */
               "taskWifi", /* String with name of task. */
@@ -121,46 +200,6 @@ void loop() {
     delay(1);
   }
 }
-
-void handleEvent(AceButton *button, uint8_t eventType, uint8_t buttonState) {
-  int ledState = 0;
-  switch (eventType) {
-    case AceButton::kEventPressed:
-      Serial.println("pressed");
-      ledState = 1;
-      break;
-    case AceButton::kEventReleased:
-      Serial.println("released");
-      ledState = 0;
-      break;
-  }
-
-  for (auto const &host : Husarnet.listPeers()) {
-    IPv6Address addr = host.first;
-    IP6Address addr2; //based on std:array
-
-    for(int i=0; i<16; i++) {
-      addr2.data[i] = addr[i];
-    }
-
-    if(host.second == "master") {
-      ;
-    } else {
-      if (!httpClient.connect(addr2, PORT)) {
-        Serial.println("connection failed");
-      } else {
-        String requestURL = "/led/1/state/" + String(ledState);
-        Serial.printf("\r\n=========================================\r\n");
-        Serial.println(requestURL);
-
-        httpClient.print(String("GET ") + requestURL + + " HTTP/1.1\r\n" + "Host: esp32\r\n" + "Connection: close\r\n\r\n");
-      
-        LOG("%s:\r\n%s\r\n\r\n", host.second.c_str(), host.first.toString().c_str());
-      }
-    }
-  }
-}
-
 
 void taskWifi(void *parameter) {
   uint8_t stat = WL_DISCONNECTED;
@@ -201,7 +240,7 @@ void taskWifi(void *parameter) {
     String state = request->pathArg(1);
 
     digitalWrite(LED_PIN, state.toInt());
-
+    Serial.printf("\r\n<< SERVER_HANDLER: %d >>\r\n", state.toInt());
     request->send(200, "text/plain", "LED: " + ledNumber + ", with state: " + state);
   });
 
