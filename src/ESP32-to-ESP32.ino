@@ -64,8 +64,6 @@ const int PORT = 8001;
 
 int ledState = 0;
 
-IPAddress myip;
-
 // Push button
 AceButton btn(BUTTON_PIN);
 void handleButtonEvent(AceButton *, uint8_t, uint8_t);
