@@ -21,7 +21,7 @@ TFT_eSPI tft = TFT_eSPI();
       tft.setCursor(0, 0);                                                   \
       IPAddress myip = WiFi.localIP();                                       \
       tft.printf("IP: %u.%u.%u.%u\r\n", myip[0], myip[1], myip[2], myip[3]); \
-      tft.printf("Hostname: %s\r\n--\r\n", Husarnet.getHostname());          \
+      tft.printf("Hostname: %s\r\n--\r\n", Husarnet.getHostname().c_str());  \
     }                                                                        \
     tft.printf((f_), ##__VA_ARGS__);                                         \
     Serial.printf((f_), ##__VA_ARGS__);                                      \
@@ -49,7 +49,7 @@ const char *dashboardURL = "default";
 const char* wifiNetworks[][2] = {
   {"wifi-ssid-one", "wifi-pass-one"},
   {"wifi-ssid-two", "wifi-pass-two"},
-} 
+};
 
 const char *hostname = "random";
 
@@ -145,7 +145,7 @@ void taskWifi(void *parameter) {
     delay(100);
   }
 
-  Serial.printf("WiFi connected\r\n", (int)stat);
+  Serial.printf("WiFi connected\r\n");
 
   // Start Husarnet VPN Client
   Husarnet.start();
