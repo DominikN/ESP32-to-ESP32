@@ -12,7 +12,7 @@
 
 #if ENABLE_TFT == 1
 
-TFT_eSPI tft = TFT_eSPI(); 
+ TFT_eSPI tft = TFT_eSPI(); 
 
 #define LOG(f_, ...)                                                         \
   {                                                                          \
