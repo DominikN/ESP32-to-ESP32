@@ -43,3 +43,7 @@ const char *husarnetJoinCode = "fc94:b01d:1803:8dd8:b293:5c7d:7639:932a/xxxxxxxx
 6. Flash at least two ESP32 devices and enjoy
 
 > Note that each ESP32 runs it's own HTTP server, so you can test not only ESP32 <> ESP32 communication but also web browser <> ESP32 (by just typing `http://random:8001/led/1/state/0`). Remember to use the same Join Code to connect your laptop to the same VPN network as ESP32.
+
+## Extra notes
+
+If you want to add Over The Air (OTA) firmware update from GitHub Actions workflow, check out this project - https://github.com/husarnet/esp32-internet-ota
