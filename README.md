@@ -1,4 +1,10 @@
 # ESP32-to-ESP32
+
+[![GitHub stars](https://img.shields.io/github/stars/dominikn/ESP32-to-ESP32?style=social)](https://github.com/DominikN/ESP32-to-ESP32/stargazers/)
+
+[![Build firmware](https://github.com/DominikN/ESP32-to-ESP32/actions/workflows/build.yml/badge.svg)](https://github.com/DominikN/ESP32-to-ESP32/actions/workflows/build.yml)
+[![GitHub license](https://img.shields.io/github/license/dominikn/ESP32-to-ESP32.svg)](https://github.com/dominikn/ESP32-to-ESP32/blob/master/LICENSE)
+
 *ESP32 to ESP32 communication example using Arduino framework. Secure, P2P, low latency connection between devices is established. Button connected to the first ESP32 controlls LED connected to second ESP32.*
 
 - ESP32 acts both as a HTTP server (based on `ESPAsyncWebServer` library) and HTTP client (based on `AsyncTCP`)
